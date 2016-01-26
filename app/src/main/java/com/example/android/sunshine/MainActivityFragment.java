@@ -220,7 +220,7 @@ public class MainActivityFragment extends Fragment {
             String format = "json";
             String units = "metric";
             int numDays = 7;
-            String appId = "2de143494c0b295cca9337e1e96b00e0";
+            String appId = "44db6a862fba0b067b1930da0d769e98";
 
             try {
                 // Construct the URL for the OpenWeatherMap query
