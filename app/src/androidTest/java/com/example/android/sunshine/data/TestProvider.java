@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteDatabase;
 import android.net.Uri;
 import android.os.Build;
 import android.test.AndroidTestCase;
+import android.util.Log;
 
 import com.example.android.sunshine.data.WeatherContract.LocationEntry;
 import com.example.android.sunshine.data.WeatherContract.WeatherEntry;
@@ -122,6 +123,55 @@ public class TestProvider extends AndroidTestCase {
         }
     }
 
+    // this test uses provider to insert then update the data
+    public void testUpdateLocation() {
+        // create a new map of values, where column names are the keys
+        ContentValues values = TestUtilities.createNorthPoleLocationValues();
+
+        Uri locationUri = mContext.getContentResolver().
+                insert(LocationEntry.CONTENT_URI, values);
+        long locationRowId = ContentUris.parseId(locationUri);
+
+        // verify we got a row back
+        assertTrue(locationRowId != -1);
+        Log.d(LOG_TAG, "New row id: " + locationRowId);
+
+        ContentValues updatedValues = new ContentValues(values);
+        updatedValues.put(LocationEntry._ID, locationRowId);
+        updatedValues.put(LocationEntry.COLUMN_CITY_NAME, "Santa's Village");
+
+        // create a cursor with observer to make sure that the content provider is notifying
+        // the observer as expected
+        Cursor locationCursor = mContext.getContentResolver().query(LocationEntry.CONTENT_URI, null, null, null, null);
+
+        TestUtilities.TestContentObserver tco = TestUtilities.getTestContentObserver();
+        locationCursor.registerContentObserver(tco);
+
+        int count = mContext.getContentResolver().update(
+                LocationEntry.CONTENT_URI, updatedValues, LocationEntry._ID + "= ?",
+                new String[] { Long.toString(locationRowId) });
+        assertEquals(count, 1);
+
+        // test to make sure our observer is called, if not, we throw an assertion
+        tco.waitForNotificationOrFail();
+
+        locationCursor.unregisterContentObserver(tco);
+        locationCursor.close();
+
+        // a cursor is your primary interface to the query results
+        Cursor cursor = mContext.getContentResolver().query(
+                LocationEntry.CONTENT_URI,
+                null, // projection
+                LocationEntry._ID + " = " + locationRowId,
+                null, // values for the "where" clause
+                null // sort order
+        );
+
+        TestUtilities.validateCursor("testUpdateLocation. Error validating location entry update.",
+                cursor, updatedValues);
+        cursor.close();
+    }
+
     public void testInsertReadProvider() {
         ContentValues testValues = TestUtilities.createNorthPoleLocationValues();
 
@@ -216,5 +266,26 @@ public class TestProvider extends AndroidTestCase {
         );
         TestUtilities.validateCursor("testInsertReadProvider. Error validating joined Weather and Location Data for a specific date.",
                 weatherCursor, weatherValues);
+    }
+
+    // make sure we can still delete after adding/updating stuff
+    public void testDeleteRecords() {
+        testInsertReadProvider();
+
+        // register a content observer for our location delete
+        TestUtilities.TestContentObserver locationObserver = TestUtilities.getTestContentObserver();
+        mContext.getContentResolver().registerContentObserver(LocationEntry.CONTENT_URI, true, locationObserver);
+
+        // register a content observer for our weather delete
+        TestUtilities.TestContentObserver weatherObserver = TestUtilities.getTestContentObserver();
+        mContext.getContentResolver().registerContentObserver(WeatherEntry.CONTENT_URI, true, weatherObserver);
+
+        deleteAllRecordsFromProvider();
+
+        locationObserver.waitForNotificationOrFail();
+        weatherObserver.waitForNotificationOrFail();
+
+        mContext.getContentResolver().unregisterContentObserver(locationObserver);
+        mContext.getContentResolver().unregisterContentObserver(weatherObserver);
     }
 }
